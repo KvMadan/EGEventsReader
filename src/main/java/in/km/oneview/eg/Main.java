@@ -7,7 +7,6 @@ package in.km.oneview.eg;
 
 
 import java.io.BufferedReader;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -15,44 +14,54 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.net.Socket;
-import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Properties;
-import java.util.Scanner;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.Logger;
-import org.apache.log4j.PropertyConfigurator;
 
 /**
  * @author Madan Kavarthapu
  *
  */
-@SuppressWarnings("unused")
+
 public class Main {
 
 	final static Logger log = Logger.getLogger(Main.class);
 	
 	private String hostname = "10.237.48.238";
 	private String port = "30010";
-	private String line;
+	private int frequency;
+	private String testName;
+	//private String line;
 	
 	private Socket socket, reportSocket;
 	
-	private InputStream input;
-	private BufferedReader reader;
+	private InputStream input, reportInput;
+	private BufferedReader reader, reportReader;
 	
-	private OutputStream output;
-	private PrintWriter writer;
+	private OutputStream output, reportOutput;
+	private PrintWriter writer, reportWriter;
 	
-	private StringBuffer metricsReceived;
+	private StringBuffer metricsReceived, reportReceived;
 	
 	private GenericMysqlMetricsSender mysqlMetricsSender;
 	
-	public Main(String hostname, String port){
+	public Main(String hostname, String port, String frequency, String testName){
 		this.hostname = hostname;
 		this.port = port;
+		
+		if (frequency != null && !frequency.isEmpty())
+			this.frequency = Integer.parseInt(frequency);
+		else
+			this.frequency = 5;
+		if (testName != null && !testName.isEmpty())
+			this.testName = testName + "_" + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date());
+		else
+			this.testName = "Test_" + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date());
 	}
 	
 	public boolean init(){
@@ -61,20 +70,27 @@ public class Main {
 			log.debug("Connecting to EG Server @ " + hostname + ":" + port);
 			System.out.println("Connecting to EG Server @ " + hostname + ":" + port);
 			socket = new Socket(InetAddress.getByName(hostname), Integer.parseInt(port));
-
+			reportSocket = new Socket(InetAddress.getByName(hostname), Integer.parseInt(port));
 			// read data from server.
 			input = socket.getInputStream();
 			reader = new BufferedReader(
 					new InputStreamReader(input));
-		
+			// read report data from server
+			reportInput = reportSocket.getInputStream();
+			reportReader = new BufferedReader(
+					new InputStreamReader(reportInput));
+			
 			// send data to server
 			output = socket.getOutputStream();
 			writer = new PrintWriter(output, true);
-			
+			//send report data to server
+			reportOutput = reportSocket.getOutputStream();
+			reportWriter = new PrintWriter(reportOutput, true);
+			log.debug("Connected to EG and corresonding streams are opened");
 			return true;
 		}
 		catch(Exception e){
-			e.printStackTrace();
+			log.error("Exception", e);
 		}
 		return false;
 	}
@@ -90,29 +106,58 @@ public class Main {
 					try {
 						metricsReceived = new StringBuffer();
 						log.debug("Receiving data from Server:");
+						String line;
 						while ((line = reader.readLine()) != null) {
 							log.debug(line);
 							metricsReceived.append(line + System.lineSeparator());
 						}
 					} catch (IOException e) {
-						e.printStackTrace();
+						log.error("IOException", e);
 					}
 				}
 			});
 			receiverThread.start();
 		}
 		catch(Exception e){
-			e.printStackTrace();
+			log.error("Exception", e);
 		}
 	}
+	
+	public void startReportReader(){
+		
+		try{
+			Thread receiverThread = new Thread(new Runnable(){
 
+				public void run() {
+					Thread.currentThread().setName("EG Report Reader");
+					try {
+						reportReceived = new StringBuffer();
+						log.debug("Receiving data from Server:");
+						String line;
+						while ((line = reportReader.readLine()) != null) {
+							log.debug(line);
+							reportReceived.append(line + System.lineSeparator());
+						}
+					} catch (IOException e) {
+						log.error("IOException", e);
+					}
+				}
+			});
+			receiverThread.start();
+		}
+		catch(Exception e){
+			log.error("Exception", e);
+		}
+	}	
+
+	@SuppressWarnings("unused")
 	private void printMetrics(HashMap<String, String> map){
 
 	    Iterator<Map.Entry<String, String>> it = map.entrySet().iterator();
 	    while (it.hasNext()) {
 	        Map.Entry<String, String> pair = it.next();
 	        log.debug(pair.getKey() + " --> " + pair.getValue());
-	        it.remove(); 
+	        //it.remove(); 
 	    }
 	}
 	
@@ -124,11 +169,23 @@ public class Main {
 					// This is a message sent to the server
 					writer.print("GET_MONITOR"); // change it to print while working with real EG Server. 
 					writer.flush();
+					
+					//Checking the server side socket availability. 
+					if (writer.checkError()){
+						try {
+							socket.close();
+							log.debug("EG is closed, exiting...");
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+						System.exit(1);
+					}
+					
 					log.debug("Sent Message: GET_MONITOR");
 					try {
-						Thread.sleep(5000);
+						Thread.sleep(frequency * 1000);
 					} catch (InterruptedException e) {
-						e.printStackTrace();
+						log.error("Exception", e);
 					}
 				}
 			}
@@ -136,7 +193,27 @@ public class Main {
 		senderThread.start();
 	}
 	
-	public void sentMetricsToDB(){
+	public void startReportWriter(){
+		Thread senderThread = new Thread(new Runnable(){
+			public void run() {
+				Thread.currentThread().setName("EG Report Writer");
+				while(true){
+					// This is a message sent to the server
+					reportWriter.print("GET_REPORT"); // change it to print while working with real EG Server. 
+					reportWriter.flush();
+					log.debug("Sent Message: GET_REPORT");
+					try {
+						Thread.sleep(60000);
+					} catch (InterruptedException e) {
+						log.error("Exception", e);
+					}
+				}
+			}
+		});
+		senderThread.start();
+	}	
+	
+	public void sendMetricsToDB(){
 		Thread metricsDBSenderThread = new Thread(new Runnable(){
 			public void run() {
 				Thread.currentThread().setName("EG Metrics DB Sender");
@@ -160,12 +237,12 @@ public class Main {
 					
 							if (!line.startsWith("###")){
 								String[] metrics = line.split("\\s+");
-								//log.debug("Metrics Lines: " + metrics.length);
+								log.debug("Metrics Lines: " + metrics.length);
 							    //System.out.println(metrics[0] + " = " + metrics[1]);
 								if (metrics.length >= 2){
 									//log.debug(metrics[0] + " = " + metrics[1]);
 									if (metrics[1].equalsIgnoreCase("-nan"))
-										metrics[1] = "";
+										metrics[1] = "0.0";
 									map.put(metrics[0].replaceAll("[)(]", ""), metrics[1]);
 								}
 							}
@@ -177,7 +254,7 @@ public class Main {
 								//printMetrics(map);
 								//Write Metrics to DB
 								if(!map.isEmpty())
-									mysqlMetricsSender.writeMetricsToDB(previousEvent.replaceAll("###", "").trim(), map, currentTime);
+									mysqlMetricsSender.writeMetricsToDB(testName, previousEvent.replaceAll("###", "").trim(), map, currentTime);
 								
 							}
 						}
@@ -185,7 +262,7 @@ public class Main {
 						log.debug("Sending Metrics (last received): " + currentEvent);
 						//printMetrics(map);
 						//Write the last received Metrics to DB
-						mysqlMetricsSender.writeMetricsToDB(currentEvent.replaceAll("###", "").trim(), map, currentTime);
+						mysqlMetricsSender.writeMetricsToDB(testName, currentEvent.replaceAll("###", "").trim(), map, currentTime);
 						
 						metricsReceived.setLength(0);
 						
@@ -193,7 +270,7 @@ public class Main {
 					try {
 						Thread.sleep(5000);
 					} catch (InterruptedException e) {
-						e.printStackTrace();
+						log.error("Exception", e);
 					}
 				}
 			}
@@ -201,9 +278,107 @@ public class Main {
 		metricsDBSenderThread.start();
 	}
 	
+	public void sendReportToDB(){
+		
+		//Thread reportSenderThread = new Thread(
+				
+			Runnable reportSenderThread =	new Runnable(){
+			public void run() {
+				Thread.currentThread().setName("EG Report DB Sender");
+				//while(true){
+					
+					// Sending Report to DB
+					if (reportReceived.length() != 0){
+						log.debug("Received Report Length : " + reportReceived.length());
+						log.debug("Received Report: " + reportReceived.toString());
+						
+						String[] reportLines = reportReceived.toString().split("\\r?\\n");
+						log.debug("Received Report Lines: " + reportLines.length);
+						HashMap<String, String> reportMap = new HashMap<String, String>();
+						String tag="";
+						//String reportX="";
+						
+						String currentReportX = "";
+						String previousReportX = "";
+						
+						for(String line: reportLines){
+							if (line.trim().matches("EG\\d+\\s+Report")){
+								
+								String[] reports = line.split("\\s+");
+								//reportX = reports[0];
+								previousReportX = currentReportX;
+								currentReportX = reports[0];
+								
+								log.debug("EG Report ID# " + currentReportX);
+								
+								//Send Report to DB if multiple reports returned by EG
+								if(!reportMap.isEmpty()){
+									log.debug("Processing Report: " + previousReportX);
+									java.util.Date dt = new java.util.Date();
+									java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+									String currentTime = sdf.format(dt);
+									mysqlMetricsSender.writeReportToDB(testName, previousReportX, reportMap, currentTime);
+									reportReceived.setLength(0);
+								}
+								
+							}
+							else if (line.trim().equalsIgnoreCase("Load Summary"))
+								tag = "LS_";
+							else if (line.trim().equalsIgnoreCase("Total Summary"))
+								tag = "TS_";
+							else if (line.trim().equalsIgnoreCase("Charges Summary"))
+								tag = "CS_";
+							else if (line.startsWith("NET_TOTALSEND") || line.startsWith("NET_TOTALRECV") || 
+									line.startsWith("NET_TOTALSESS") || line.startsWith("TOTAL_RUN_TIME"))
+								tag = "X_";
+							
+							if (isItMetric(line)){
+								String[] metrics = line.split("\\s+");
+							    log.debug(tag + metrics[0] + " = " + metrics[1]);
+							    
+							    if (metrics[1].startsWith(">"))
+							    {
+							    	log.debug("Trunctacting Timeout value : " + metrics[1]);
+							    	metrics[1] = new StringBuffer(metrics[1]).deleteCharAt(0).toString();
+							    }
+
+								reportMap.put(tag + metrics[0], metrics[1]);
+							}
+						}
+						//Printing Map Details
+						//log.debug("Printing Map Details: ");
+						//printMetrics(reportMap);
+						
+						//Send Report to DB
+						if(!reportMap.isEmpty()){
+							log.debug("Processing Report: (Last Report)" + currentReportX);
+							java.util.Date dt = new java.util.Date();
+							java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+							String currentTime = sdf.format(dt);
+							mysqlMetricsSender.writeReportToDB(testName, currentReportX, reportMap, currentTime);
+							reportReceived.setLength(0);
+						}
+					}
+					else{
+						log.debug("No data to send");
+					}
+					/*try {
+						Thread.sleep(10000);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}*/
+				//}
+			}
+		};
+				//);
+		//reportSenderThread.start();
+		 ScheduledExecutorService service = Executors.newSingleThreadScheduledExecutor();
+		 service.scheduleAtFixedRate(reportSenderThread, 60, 60, TimeUnit.SECONDS);
+	}	
+	
 	private boolean isItMetric(String line){
 		//System.out.println("Is it Metric: " + line);
-		if (line.startsWith("EG0") || line.startsWith("=") || line.startsWith("-") ||
+		if (line.trim().matches("EG\\d+\\s+Report") || line.startsWith("=") || line.startsWith("-") ||
 				line.trim().equalsIgnoreCase("Load Summary") ||  
 				line.trim().equalsIgnoreCase("Total Summary") || 
 				line.trim().equalsIgnoreCase("Charges Summary") ||
@@ -252,16 +427,17 @@ public class Main {
 			
 			System.out.println("\nMissing Required parameters!\n");
 			
-			String usage = "Usage: \\n java -Deg.server=10.237.48.238 -Deg.port=30010 \\n -Dmysql.server=localhost -Dmysql.port=3306 \\n"
+			/*String usage = "Usage: \\n java -Deg.server=10.237.48.238 -Deg.port=30010 \\n -Dmysql.server=localhost -Dmysql.port=3306 \\n"
 					+ "-Dmysql.db=egdb -Dmysql.user=root -Dmysql.pwd=root \\n"
-					+ "-jar EGEventsReader_v1.1.jar";
+					+ "-jar EGEventsReader_v1.1.jar";*/
 			
 			System.out.println("*****************************************************");
 			System.out.println("Usage: ");
 			System.out.println("java -Deg.server=10.237.48.238 -Deg.port=30010");
 			System.out.println("-Dmysql.server=localhost -Dmysql.port=3306");
 			System.out.println("-Dmysql.db=egdb -Dmysql.user=root -Dmysql.pwd=root");
-			System.out.println("-jar EGLogsReader_v1.1.jar");
+			System.out.println("-Deg.frequency=5 -Deg.testname=XYZ");
+			System.out.println("-jar EGEventsReader_v1.0.jar");
 			System.out.println("*****************************************************");
 			
 			System.exit(1);
@@ -271,7 +447,7 @@ public class Main {
 		}
 		
 		
-		Main eg = new Main(System.getProperty("eg.server"), System.getProperty("eg.port"));
+		Main eg = new Main(System.getProperty("eg.server"), System.getProperty("eg.port"), System.getProperty("eg.frequency"), System.getProperty("eg.testname"));
 
 		if(eg.init()){
 			
@@ -281,7 +457,13 @@ public class Main {
 			
 			eg.startWriter();
 			eg.startReader();
-			eg.sentMetricsToDB();
+			
+			//For Report
+			eg.startReportWriter();
+			eg.startReportReader();
+			
+			eg.sendMetricsToDB();
+			eg.sendReportToDB();
 			
 		}
 	}
