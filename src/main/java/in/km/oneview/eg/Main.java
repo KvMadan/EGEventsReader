@@ -25,7 +25,9 @@ import org.apache.log4j.Logger;
 
 /**
  * @author Madan Kavarthapu
- *
+ * Build: 
+ * mvn build-helper:parse-version versions:set -DnewVersion=\${parsedVersion.majorVersion}.\${parsedVersion.minorVersion}.\${parsedVersion.nextIncrementalVersion} versions:commit
+ * mvn package
  */
 
 public class Main {
@@ -241,7 +243,7 @@ public class Main {
 							    //System.out.println(metrics[0] + " = " + metrics[1]);
 								if (metrics.length >= 2){
 									//log.debug(metrics[0] + " = " + metrics[1]);
-									if (metrics[1].equalsIgnoreCase("-nan"))
+									if (metrics[1].equalsIgnoreCase("-nan") || metrics[1].equalsIgnoreCase("nan"))
 										metrics[1] = "0.0";
 									map.put(metrics[0].replaceAll("[)(]", ""), metrics[1]);
 								}

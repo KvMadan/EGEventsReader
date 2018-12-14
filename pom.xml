@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>in.km.oneview.eg</groupId>
   <artifactId>EGEventsReader</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.0.3</version>
   <name>EG Events Reader</name>
   <dependencies>
 	<!-- https://mvnrepository.com/artifact/mysql/mysql-connector-java -->

@@ -58,6 +58,9 @@ public class GenericMysqlMetricsSender {
 			+ "LS_LAT_50 decimal(12,3),"
 			+ "LS_LAT_90 decimal(12,3),"
 			+ "LS_LAT_95 decimal(12,3),"
+			+ "LS_LAT_96 decimal(12,3),"
+			+ "LS_LAT_97 decimal(12,3),"
+			+ "LS_LAT_98 decimal(12,3),"
 			+ "LS_LAT_99 decimal(12,3),"
 			+ "LS_LAT_995 decimal(12,3),"
 			+ "LS_LAT_999 decimal(12,3),"
@@ -70,6 +73,7 @@ public class GenericMysqlMetricsSender {
 			+ "LS_NET_TIMEOUT decimal(12,3),"
 			+ "LS_RESENT_TIMEOUT decimal(12,3),"
 			+ "LS_NET_CONNECTIONS decimal(12,3),"
+			+ "LS_LAST_RESENT_TIMEOUT decimal(12,3),"
 			// + "LS_NET_APP05012 decimal(12,3),"
 			+ "TS_TOTAL_SENT decimal(12,3),"
 			+ "TS_RESENT decimal(12,3),"
@@ -81,10 +85,12 @@ public class GenericMysqlMetricsSender {
 			+ "TS_APP_SUCCESS decimal(12,3),"
 			+ "TS_APP_ERROR decimal(12,3),"
 			+ "TS_APP_BUSY decimal(12,3),"
+			+ "TS_RAR_REQUEST decimal(12,3),"
 			+ "TS_RAR_TRIGGER decimal(12,3),"
 			+ "TS_RAR_EVENT decimal(12,3),"
 			+ "TS_RAA_REPLY decimal(12,3),"
 			+ "TS_ReAUTH_UPDATE decimal(12,3),"
+			+ "TS_ASR_REQUEST decimal(12,3),"
 			+ "TS_ASR_TRIGGER decimal(12,3),"
 			+ "TS_ASR_EVENT decimal(12,3),"
 			+ "TS_ASA_REPLY decimal(12,3),"
@@ -92,6 +98,11 @@ public class GenericMysqlMetricsSender {
 			+ "TS_DEGRADED_RECV decimal(12,3),"
 			+ "TS_DEGRADED_SEND decimal(12,3),"
 			+ "TS_DEGRADED_FAIL decimal(12,3),"
+			+ "TS_DEGRADED_EVENTS decimal(12,3),"
+			+ "TS_LATE_ERROR decimal(12,3),"
+			+ "TS_LATE_SUCCESS decimal(12,3),"
+			+ "TS_SNR_EVENT decimal(12,3),"
+			+ "TS_SNA_REPLY decimal(12,3),"
 			+ "CS_OPEN_SESS decimal(12,3),"
 			+ "CS_TOTAL_SENT decimal(12,3),"
 			+ "CS_RESENT decimal(12,3),"
@@ -99,14 +110,30 @@ public class GenericMysqlMetricsSender {
 			+ "CS_NET_OK decimal(12,3),"
 			+ "CS_NET_TIMEOUT decimal(12,3),"
 			+ "CS_RESENT_TIMEOUT decimal(12,3),"
+			+ "CS_LAST_RESENT_TIMEOUT decimal(12,3),"
 			+ "CS_APP_SUCCESS decimal(12,3),"
 			+ "CS_APP_ERROR decimal(12,3),"
 			+ "CS_APP_BUSY decimal(12,3),"
+			+ "CS_LATE_ERROR decimal(12,3),"
 			+ "X_NET_TOTALSEND decimal(12,3),"
 			+ "X_NET_TOTALRECV decimal(12,3),"
 			+ "X_NET_TOTALSESS decimal(12,3),"
 			+ "X_TOTAL_RUN_TIME varchar(15)," + "PRIMARY KEY (`tStamp`)" + ")";
 
+	/* Added Below fields in above table for ATT (Padmaja Patil) 
+	 * TS: 
+		LATE_ERROR
+		LATE_SUCCESS
+		RAR_REQUEST
+		ASR_REQUEST
+		SNR_EVENT
+		SNA_REPLY
+		DEGRADED_EVENTS
+		
+		CS:
+		LATE_ERROR
+	 */
+	
 	private String INSERT_EG_REPORT_SQL = "INSERT INTO %s.egreport ( %s ) VALUES ( %s )";
 	private String TABLE_EG_REPORT_SQL = "SELECT count(*) FROM information_schema.tables WHERE table_schema = '%s' AND table_name = '%s'";
 
